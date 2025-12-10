@@ -34,8 +34,8 @@ func (tracker *Tracker) pump() {
 			tracker.sockets[conn] = true
 		case conn := <-tracker.unregister:
 			if _, ok := tracker.sockets[conn]; ok {
+				close(conn.send)
 				delete(tracker.sockets, conn)
-				conn.Close()
 			}
 		case message := <-tracker.broadcast:
 			for socket := range tracker.sockets {
@@ -46,7 +46,6 @@ func (tracker *Tracker) pump() {
 					// client too slow, disconnect
 					close(socket.send)
 					delete(tracker.sockets, socket)
-					socket.Close()
 				}
 			}
 		}
@@ -54,14 +53,17 @@ func (tracker *Tracker) pump() {
 }
 
 func (socket *Socket) WritePump() {
-	for msg := range socket.send {
+	for {
+		msg, ok := <- socket.send
+		if !ok {
+			socket.conn.WriteMessage(websocket.CloseMessage, []byte{})
+			return
+		}
 		err := socket.conn.WriteMessage(websocket.TextMessage, msg)
 		if err != nil {
 			logging.Debug.Printf("websocket encountered error, dropping (%s)", err.Error())
-			break
 		}
 	}
-	socket.Close()
 }
 
 func (tracker *Tracker) Register(conn *Socket) {
