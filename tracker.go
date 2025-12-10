@@ -8,18 +8,16 @@ import (
 )
 
 type Tracker struct {
-	sockets    map[*Socket]bool
-	broadcast  chan []byte
-	register   chan *Socket
-	unregister chan *Socket
+	sockets   map[*Socket]bool
+	broadcast chan []byte
+	register  chan *Socket
 }
 
 func CreateTracker() *Tracker {
 	tracker := &Tracker{
-		sockets:    make(map[*Socket]bool, 4),
-		broadcast:  make(chan []byte, 256),
-		register:   make(chan *Socket, 4),
-		unregister: make(chan *Socket, 4),
+		sockets:   make(map[*Socket]bool, 4),
+		broadcast: make(chan []byte, 256),
+		register:  make(chan *Socket, 4),
 	}
 
 	go tracker.pump()
@@ -32,11 +30,6 @@ func (tracker *Tracker) pump() {
 		select {
 		case conn := <-tracker.register:
 			tracker.sockets[conn] = true
-		case conn := <-tracker.unregister:
-			if _, ok := tracker.sockets[conn]; ok {
-				close(conn.send)
-				delete(tracker.sockets, conn)
-			}
 		case message := <-tracker.broadcast:
 			for socket := range tracker.sockets {
 				select {
@@ -54,7 +47,7 @@ func (tracker *Tracker) pump() {
 
 func (socket *Socket) WritePump() {
 	for {
-		msg, ok := <- socket.send
+		msg, ok := <-socket.send
 		if !ok {
 			socket.conn.WriteMessage(websocket.CloseMessage, []byte{})
 			return
@@ -62,6 +55,7 @@ func (socket *Socket) WritePump() {
 		err := socket.conn.WriteMessage(websocket.TextMessage, msg)
 		if err != nil {
 			logging.Debug.Printf("websocket encountered error, dropping (%s)", err.Error())
+			break
 		}
 	}
 }
